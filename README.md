@@ -4,7 +4,7 @@ Use Whisper word timestamps and Remotion to add short-video subtitles where the 
 
 This Skill is designed for Chinese creator workflows where subtitles need to feel polished, readable, and screenshot-friendly.
 
-![Word highlight subtitle example](assets/effect-word-highlight.jpg)
+![Word highlight subtitle example](https://raw.githubusercontent.com/0x00000003/remotion-word-highlight-subtitles/main/assets/effect-word-highlight.jpg)
 
 ## What It Does
 

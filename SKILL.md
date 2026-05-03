@@ -1,7 +1,7 @@
 ---
 name: remotion-word-highlight-subtitles
 description: Add word-level highlighted subtitles to local short videos using Whisper word timestamps and Remotion rendering.
-version: 0.1.1
+version: 0.1.2
 metadata:
   openclaw:
     requires:
