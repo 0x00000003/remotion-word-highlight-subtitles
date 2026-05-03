@@ -1,7 +1,7 @@
 ---
 name: remotion-word-highlight-subtitles
 description: Add word-level highlighted subtitles to local short videos using Whisper word timestamps and Remotion rendering.
-version: 0.1.2
+version: 0.1.3
 metadata:
   openclaw:
     requires:
@@ -39,7 +39,8 @@ If the user only gives one video path, write the output next to the source video
 - Source: local `.mp4`, `.mov`, `.m4v`, or audio/video file with usable audio.
 - Output: `<source-stem>_remotion逐词高亮字幕.mp4` in the same directory unless the user names another target.
 - Transcription: Whisper with word timestamps, Chinese by default: `--language zh --word_timestamps True --output_format json`.
-- Caption data: one Remotion caption per Whisper segment, with token-level `startMs` and `endMs`.
+- Transcript QA: mandatory before rendering. Build a tiny glossary from the user prompt, folder/file names, visible context, and topic; correct obvious ASR mistakes in product/model/person/place names, English terms, numbers, and homophones.
+- Caption data: Remotion caption chunks built from Whisper words, with token-level `startMs` and `endMs`. Long Whisper segments must be split by punctuation, timing gaps, duration, or length before rendering.
 - Caption position: keep all captions in a screenshot-friendly lower band, slightly above the bottom UI area. Start around `height * 0.28` bottom padding, then adjust only if the source framing clearly needs it.
 - Visual style: bold Chinese UI font, white base text, current token yellow, optional sparse keyword accent, and black shadow/outline for readability.
 - Verification: check the rendered file exists, keeps audio, matches the source duration closely, and visually inspect stills before accepting the style.
@@ -47,13 +48,15 @@ If the user only gives one video path, write the output next to the source video
 ## Workflow
 
 1. Inspect the source with `ffprobe` for width, height, fps, duration, and audio presence.
-2. Run Whisper word timestamp transcription. Prefer a cached/local model that works on the machine; `turbo` is a good default when available.
-3. Convert the Whisper JSON to `public/captions.json` using `scripts/whisper_json_to_captions.py`.
-4. Build or reuse a small Remotion project in the video's folder. Copy the video to `public/input.mp4` or encode an H.264 compatibility copy as `public/input-h264.mp4`.
-5. Set the Remotion composition to the exact source width, height, fps, and duration in frames.
-6. Before the full render, render and inspect at least two stills from the Remotion composition: one long/two-line caption and one dense keyword/current-token caption. Fix muddy text, excessive outline, large dark backing, bad line breaks, or poor placement before rendering the final video.
-7. Render with Remotion to the output path next to the source.
-8. Verify the final output with `ffprobe`; extract and inspect a still from the rendered video to confirm the final encoded file kept the approved subtitle look.
+2. Build a small domain glossary before transcription. Include likely product names, model names, people, places, mixed Chinese/English terms, numbers, and terms hinted by the folder or filename.
+3. Run Whisper word timestamp transcription. Prefer a cached/local model that works on the machine; `turbo` is a good default when available. Use `--initial_prompt` when the glossary contains high-risk names or English terms.
+4. Do a mandatory transcript QA pass before rendering. Read every segment, compare it with the video's topic/context, and create a correction map for obvious ASR mistakes. Do not render while known mistakes remain.
+5. Convert the Whisper JSON to `public/captions.json` using `scripts/whisper_json_to_captions.py`, passing corrections with `--replace` or `--replace-phrase`. If Whisper returns long paragraphs, keep the helper's caption splitting enabled.
+6. Build or reuse a small Remotion project in the video's folder. Copy the video to `public/input.mp4` or encode an H.264 compatibility copy as `public/input-h264.mp4`.
+7. Set the Remotion composition to the exact source width, height, fps, and duration in frames.
+8. Before the full render, render and inspect at least two stills from the Remotion composition: one long/two-line caption and one dense keyword/current-token caption. Fix muddy text, excessive outline, large dark backing, bad line breaks, poor placement, or remaining typo/wrong-character subtitles before rendering the final video.
+9. Render with Remotion to the output path next to the source.
+10. Verify the final output with `ffprobe`; extract and inspect a still from the rendered video to confirm the final encoded file kept the approved subtitle look.
 
 ## Whisper Command
 
@@ -63,6 +66,18 @@ Use this shape, adjusting model and paths as needed:
 whisper "/absolute/path/video.mp4" --model turbo --language zh --word_timestamps True --output_format json --output_dir "/absolute/path"
 ```
 
+For names and mixed Chinese/English topics, add a short prompt rather than relying on Whisper to infer them:
+
+```bash
+whisper "/absolute/path/video.mp4" \
+  --model turbo \
+  --language zh \
+  --word_timestamps True \
+  --output_format json \
+  --initial_prompt "本视频可能出现这些词：Cursor、Kimi 2.5、马斯克、AI大模型、转推、套壳。" \
+  --output_dir "/absolute/path"
+```
+
 If Whisper fails on the video container, extract audio first:
 
 ```bash
@@ -70,6 +85,39 @@ ffmpeg -y -i "/absolute/path/video.mp4" -vn -ac 1 -ar 16000 "/absolute/path/vide
 ```
 
 Then run Whisper on the WAV and keep the output naming clear.
+
+## Mandatory Transcript QA
+
+After Whisper finishes, print or read the segment transcript before building captions. Treat this as a required gate, not a nice-to-have.
+
+Check especially:
+
+- product, model, company, person, and place names
+- mixed Chinese/English terms such as `Cursor`, `Kimi 2.5`, `ChatGPT`, `Claude`, `OpenAI`
+- numbers, dates, model versions, and acronyms
+- Chinese homophones that are plausible but wrong in context, such as "却" versus "圈" or "死腿" versus "转推"
+- low-confidence words if the Whisper JSON includes probabilities
+
+Create a short correction map and apply it before rendering. Use `--replace` for single-token fixes and `--replace-phrase` for words split across adjacent Whisper tokens.
+
+Example:
+
+```bash
+python3 scripts/whisper_json_to_captions.py \
+  "/absolute/path/transcript.json" \
+  "/absolute/path/remotion-project/public/captions.json" \
+  --replace-phrase "科舍=Cursor" \
+  --replace-phrase "KMI 2.5=Kimi 2.5" \
+  --replace-phrase "Kimi 2.5=Kimi 2.5" \
+  --replace-phrase "AI却=AI圈" \
+  --replace-phrase "死腿=转推" \
+  --merge-term "Cursor" \
+  --merge-term "Kimi 2.5" \
+  --keyword "AI" \
+  --keyword "Kimi 2.5"
+```
+
+If a correction is uncertain, prefer rerunning Whisper with a better `--initial_prompt` or inspect the relevant audio/video moment before deciding. Report the correction map in the final response.
 
 ## Caption JSON
 
@@ -95,10 +143,18 @@ Use the helper script:
 python3 scripts/whisper_json_to_captions.py \
   "/absolute/path/transcript.json" \
   "/absolute/path/remotion-project/public/captions.json" \
-  --keyword "提示词" --keyword "Codex"
+  --keyword "提示词" \
+  --keyword "Codex" \
+  --replace-phrase "错识别词=正确词" \
+  --max-caption-chars 28 \
+  --max-caption-duration-ms 4200 \
+  --split-gap-ms 260 \
+  --min-punctuation-caption-ms 900
 ```
 
-After conversion, quickly scan the transcript for obvious recognition mistakes and fix `captions.json` before rendering.
+Run the transcript QA pass before this conversion command. If any correction changes adjacent tokens into one display term, also pass that final term with `--merge-term` or a same-text `--replace-phrase` so the highlight appears as a clean word instead of broken characters.
+
+The helper splits long Whisper segments by visible length, duration, punctuation, and word timing gaps. Keep this behavior on for short-video subtitles; otherwise a single Whisper paragraph can become an unreadable multi-line caption.
 
 ## Remotion Caption Layer Requirements
 
@@ -164,4 +220,4 @@ If iterating for the same source, add `_v2`, `_v3`, etc. Do not overwrite the us
 
 ## Final Response
 
-Tell the user the output path and mention that it used the reusable Remotion + Whisper word timestamp flow. If any verification step could not be run, say that plainly.
+Tell the user the output path, mention that it used the reusable Remotion + Whisper word timestamp flow, and include the transcript correction map or say no corrections were needed. If any verification step could not be run, say that plainly.

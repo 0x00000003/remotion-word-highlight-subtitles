@@ -10,6 +10,8 @@ This Skill is designed for Chinese creator workflows where subtitles need to fee
 
 - Transcribes a local video with Whisper `word_timestamps`.
 - Converts Whisper's word-level JSON into Remotion-friendly `captions.json`.
+- Splits long Whisper paragraphs into readable caption chunks.
+- Requires a transcript QA pass before rendering so obvious ASR mistakes can be corrected.
 - Renders subtitles with Remotion instead of burning plain SRT text.
 - Highlights the current spoken word in yellow.
 - Optionally marks sparse keywords with a secondary accent.
@@ -78,19 +80,24 @@ The Skill does not upload your video anywhere by itself. It is intended for loca
      --output_dir "/absolute/path/output-dir"
    ```
 
-3. Convert Whisper JSON to Remotion caption data:
+3. Review the Whisper transcript before rendering. Build a correction map for obvious mistakes in names, model versions, English terms, numbers, and homophones.
+4. Convert Whisper JSON to Remotion caption data:
 
    ```bash
    python3 scripts/whisper_json_to_captions.py \
      "/absolute/path/transcript.json" \
      "/absolute/path/remotion-project/public/captions.json" \
+     --replace-phrase "错识别词=正确词" \
+     --max-caption-chars 28 \
+     --max-caption-duration-ms 4200 \
+     --min-punctuation-caption-ms 900 \
      --keyword "提示词" \
      --keyword "Codex"
    ```
 
-4. Render the video with a Remotion component that reads `captions.json`.
-5. Inspect one or more still frames before the full render when the framing is uncertain.
-6. Verify the final video duration and audio with `ffprobe`.
+5. Render the video with a Remotion component that reads `captions.json`.
+6. Inspect one or more still frames before the full render when the framing is uncertain.
+7. Verify the final video duration and audio with `ffprobe`.
 
 ## Caption Style
 
@@ -150,9 +157,17 @@ Useful options:
 --keyword "Codex"
 --merge-term "朋友圈"
 --replace "彭丽圈=朋友圈"
+--replace-phrase "科舍=Cursor"
+--replace-phrase "KMI 2.5=Kimi 2.5"
+--max-caption-chars 28
+--max-caption-duration-ms 4200
+--split-gap-ms 260
+--min-punctuation-caption-ms 900
 ```
 
-Use `--replace` for obvious transcription corrections before rendering.
+Use `--replace` for single-token corrections and `--replace-phrase` for corrections that span adjacent Whisper tokens, such as product names split into characters. Report the correction map when you deliver the final video.
+
+Caption splitting is enabled by default because Whisper may return long paragraph-like segments, especially when `--initial_prompt` is used. Keep the split settings unless you have inspected stills and confirmed longer captions remain readable.
 
 ## Notes
 
