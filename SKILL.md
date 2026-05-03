@@ -1,7 +1,7 @@
 ---
 name: remotion-word-highlight-subtitles
 description: Add word-level highlighted subtitles to local short videos using Whisper word timestamps and Remotion rendering.
-version: 0.1.0
+version: 0.1.1
 metadata:
   openclaw:
     requires:
@@ -20,6 +20,8 @@ metadata:
 ## Overview
 
 This skill turns a local video into a subtitled video using the reusable "fine version": Whisper word timestamps plus Remotion-rendered current-word highlighting. Use this instead of plain SRT burn-in unless the user explicitly asks for simple static subtitles.
+
+Detailed usage guide, README, and effect preview: https://github.com/0x00000003/remotion-word-highlight-subtitles
 
 ## Trigger Phrases
 
