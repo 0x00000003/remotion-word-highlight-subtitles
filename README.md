@@ -15,6 +15,8 @@ This Skill is designed for Chinese creator workflows where subtitles need to fee
 - Renders subtitles with Remotion instead of burning plain SRT text.
 - Highlights the current spoken word in yellow.
 - Optionally marks sparse keywords with a secondary accent.
+- Strips visible display punctuation by default while still using punctuation for caption splitting.
+- Enforces orientation-aware subtitle size floors so landscape subtitles do not render too small.
 - Keeps subtitles in a lower, screenshot-friendly band by default.
 - Writes the rendered video next to the source file.
 
@@ -108,13 +110,18 @@ Baseline style choices:
 - Keyword highlights are sparse and secondary.
 - Text uses a black shadow/outline, not a heavy stroke.
 - The caption position starts around `height * 0.28` bottom padding.
+- Landscape 1080p captions target about `60px` and must not render below `56px`.
+- Final display captions omit sentence punctuation unless the user asks for verbatim transcript punctuation.
 - Avoid large black subtitle boxes unless the footage truly needs extra contrast.
 
 Representative constants:
 
 ```tsx
 const captionBottom = Math.round(height * 0.28);
-const captionFontSize = Math.round(height * 0.032);
+const isLandscape = width >= height;
+const baseCaptionFontSize = Math.round(height * (isLandscape ? 0.056 : 0.032));
+const minCaptionFontSize = isLandscape && height >= 1000 ? 56 : Math.round(height * 0.032);
+const captionFontSize = Math.max(baseCaptionFontSize, minCaptionFontSize);
 const captionMaxWidth = Math.round(width * 0.88);
 const activeColor = "#FFE45C";
 const keywordColor = "#D6FFF8";
@@ -163,9 +170,12 @@ Useful options:
 --max-caption-duration-ms 4200
 --split-gap-ms 260
 --min-punctuation-caption-ms 900
+--keep-display-punctuation
 ```
 
 Use `--replace` for single-token corrections and `--replace-phrase` for corrections that span adjacent Whisper tokens, such as product names split into characters. Report the correction map when you deliver the final video.
+
+By default, the helper uses punctuation as a split signal and then removes visible punctuation from final `caption.text` and token text. Use `--keep-display-punctuation` only when the user explicitly asks for verbatim punctuation.
 
 Caption splitting is enabled by default because Whisper may return long paragraph-like segments, especially when `--initial_prompt` is used. Keep the split settings unless you have inspected stills and confirmed longer captions remain readable.
 

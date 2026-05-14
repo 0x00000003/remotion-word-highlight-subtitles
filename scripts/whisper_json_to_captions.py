@@ -26,6 +26,7 @@ DEFAULT_MERGE_TERMS = [
 ]
 
 BREAK_PUNCTUATION = "。，,！？!?；;：:、"
+DISPLAY_PUNCTUATION = BREAK_PUNCTUATION
 
 
 def ms(value: float | int) -> int:
@@ -59,6 +60,15 @@ def match_key(text: str) -> str:
 def trailing_punctuation(text: str) -> str:
     match = re.search(rf"[{re.escape(BREAK_PUNCTUATION)}]+$", text.strip())
     return match.group(0) if match else ""
+
+
+def strip_display_punctuation(text: str) -> str:
+    cleaned = clean_text(text)
+    return re.sub(
+        rf"^[{re.escape(DISPLAY_PUNCTUATION)}]+|[{re.escape(DISPLAY_PUNCTUATION)}]+$",
+        "",
+        cleaned,
+    ).strip()
 
 
 def with_trailing_punctuation(text: str, source_text: str) -> str:
@@ -169,6 +179,18 @@ def tokens_to_text(tokens: list[dict[str, Any]]) -> str:
     return clean_text("".join(str(token["text"]) for token in tokens))
 
 
+def display_tokens(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for token in tokens:
+        text = strip_display_punctuation(str(token["text"]))
+        if not text:
+            continue
+        display_token = dict(token)
+        display_token["text"] = text
+        result.append(display_token)
+    return result
+
+
 def visible_length(tokens: list[dict[str, Any]]) -> int:
     return len(match_key(tokens_to_text(tokens)))
 
@@ -257,6 +279,7 @@ def convert(
     max_caption_duration_ms: int,
     split_gap_ms: int,
     min_punctuation_caption_ms: int,
+    keep_display_punctuation: bool,
 ) -> None:
     data = json.loads(whisper_json.read_text(encoding="utf-8"))
     keyword_terms = set(keyword_values)
@@ -279,12 +302,19 @@ def convert(
             split_gap_ms,
             min_punctuation_caption_ms,
         ):
+            output_tokens = (
+                [dict(token) for token in chunk]
+                if keep_display_punctuation
+                else display_tokens(chunk)
+            )
+            if not output_tokens:
+                continue
             captions.append(
                 {
-                    "text": tokens_to_text(chunk),
+                    "text": tokens_to_text(output_tokens),
                     "startMs": chunk[0]["startMs"],
                     "endMs": chunk[-1]["endMs"],
-                    "tokens": chunk,
+                    "tokens": output_tokens,
                 }
             )
 
@@ -354,6 +384,14 @@ def main() -> None:
         default=900,
         help="Split at punctuation once the current caption is at least this long.",
     )
+    parser.add_argument(
+        "--keep-display-punctuation",
+        action="store_true",
+        help=(
+            "Keep punctuation in final displayed captions. By default display "
+            "punctuation is stripped after splitting."
+        ),
+    )
     args = parser.parse_args()
 
     merge_terms_arg = [] if args.no_default_merge_terms else DEFAULT_MERGE_TERMS[:]
@@ -370,6 +408,7 @@ def main() -> None:
         args.max_caption_duration_ms,
         args.split_gap_ms,
         args.min_punctuation_caption_ms,
+        args.keep_display_punctuation,
     )
 
 
